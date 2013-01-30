@@ -2,10 +2,12 @@
 
 package com.lambdaworks.redis.protocol;
 
+import com.google.common.util.concurrent.AbstractFuture;
 import com.lambdaworks.redis.RedisCommandInterruptedException;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A redis command and its result. All successfully executed commands will
@@ -15,13 +17,13 @@ import java.util.concurrent.*;
  *
  * @author Will Glozer
  */
-public class Command<K, V, T> implements Future<T> {
+public class Command<K, V, T> extends AbstractFuture<T> {
     private static final byte[] CRLF = "\r\n".getBytes(Charsets.ASCII);
 
     public final CommandType type;
     protected CommandArgs<K, V> args;
     protected CommandOutput<K, V, T> output;
-    protected CountDownLatch latch;
+    protected AtomicInteger latch;
 
     /**
      * Create a new command with the supplied type and args.
@@ -35,9 +37,18 @@ public class Command<K, V, T> implements Future<T> {
         this.type   = type;
         this.output = output;
         this.args   = args;
-        this.latch  = new CountDownLatch(multi ? 2 : 1);
+        this.latch  = new AtomicInteger(multi ? 2 : 1);
     }
 
+    /**
+     * Get the object that holds this command's output.
+     *
+     * @return  The command output object.
+     */
+    public CommandOutput<K, V, T> getOutput() {
+        return output;
+    }
+    
     /**
      * Cancel the command and notify any waiting consumers. This does
      * not cause the redis server to stop executing the command.
@@ -48,35 +59,9 @@ public class Command<K, V, T> implements Future<T> {
      */
     @Override
     public boolean cancel(boolean ignored) {
-        boolean cancelled = false;
-        if (latch.getCount() == 1) {
-            latch.countDown();
-            output = null;
-            cancelled = true;
-        }
-        return cancelled;
+    	return super.cancel(true);
     }
-
-    /**
-     * Check if the command has been cancelled.
-     *
-     * @return True if the command was cancelled.
-     */
-    @Override
-    public boolean isCancelled() {
-        return latch.getCount() == 0 && output == null;
-    }
-
-    /**
-     * Check if the command has completed.
-     *
-     * @return true if the command has completed.
-     */
-    @Override
-    public boolean isDone() {
-        return latch.getCount() == 0;
-    }
-
+    
     /**
      * Get the command output and if the command hasn't completed
      * yet, wait until it does.
@@ -84,15 +69,14 @@ public class Command<K, V, T> implements Future<T> {
      * @return The command output.
      */
     @Override
-    public T get() {
-        try {
-            latch.await();
-            return output.get();
-        } catch (InterruptedException e) {
-            throw new RedisCommandInterruptedException(e);
-        }
+    public T get() throws ExecutionException {
+    	try {
+    		return super.get();
+    	} catch(InterruptedException e) {
+    		throw new RedisCommandInterruptedException(e);
+    	}
     }
-
+    
     /**
      * Get the command output and if the command hasn't completed yet,
      * wait up to the specified time until it does.
@@ -105,17 +89,24 @@ public class Command<K, V, T> implements Future<T> {
      * @throws TimeoutException if the wait timed out.
      */
     @Override
-    public T get(long timeout, TimeUnit unit) throws TimeoutException {
+    public T get(long timeout, TimeUnit unit) throws TimeoutException, ExecutionException {
         try {
-            if (!latch.await(timeout, unit)) {
-                throw new TimeoutException("Command timed out");
-            }
-        } catch (InterruptedException e) {
-            throw new RedisCommandInterruptedException(e);
-        }
-        return output.get();
+			return super.get(timeout, unit);
+		} catch (InterruptedException e) {
+			throw new RedisCommandInterruptedException(e);
+		}
     }
 
+    /**
+     * Mark this command complete and notify all waiting threads.
+     */
+    public void complete() {
+    	int result = latch.decrementAndGet();
+        if(result == 0) {
+        	set(output.get());
+        }
+    }
+    
     /**
      * Wait up to the specified time for the command output to become
      * available.
@@ -127,26 +118,18 @@ public class Command<K, V, T> implements Future<T> {
      */
     public boolean await(long timeout, TimeUnit unit) {
         try {
-            return latch.await(timeout, unit);
-        } catch (InterruptedException e) {
-            throw new RedisCommandInterruptedException(e);
+            get(timeout, unit);
+        } catch (ExecutionException e) {
+        	return false;
+        } catch (TimeoutException e) {
+        	return false;
         }
+        return true;
     }
-
-    /**
-     * Get the object that holds this command's output.
-     *
-     * @return  The command output object.
-     */
-    public CommandOutput<K, V, T> getOutput() {
-        return output;
-    }
-
-    /**
-     * Mark this command complete and notify all waiting threads.
-     */
-    public void complete() {
-        latch.countDown();
+    
+    @Override
+    protected void interruptTask() {
+    	output = null;
     }
 
     /**
