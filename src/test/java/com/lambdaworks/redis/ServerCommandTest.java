@@ -16,6 +16,7 @@ public class ServerCommandTest extends AbstractCommandTest {
     public void bgrewriteaof() throws Exception {
         String msg = "Background append only file rewriting started";
         assertEquals(msg, redis.bgrewriteaof());
+        Thread.sleep(4000);
     }
 
     @Test

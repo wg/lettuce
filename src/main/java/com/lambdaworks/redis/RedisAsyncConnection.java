@@ -1082,4 +1082,21 @@ public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
         }
         return Double.toString(n);
     }
+
+    /**
+     * Add a ChannelHandler to the pipeline.
+     *
+     * @param handler the handler to add
+     */
+    public void addChannelHandler(ChannelHandler handler) {
+        Channel chan = channel;
+        if (chan != null && handler != null) {
+            ChannelPipeline pipeline = chan.getPipeline();
+            if (pipeline != null) {
+                List<String> names = pipeline.getNames();
+                int size = (names != null) ? names.size() : 0;
+                pipeline.addLast(Integer.valueOf(size).toString(), handler);
+            }
+        }
+    }
 }
