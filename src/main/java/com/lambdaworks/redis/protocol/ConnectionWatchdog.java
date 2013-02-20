@@ -2,13 +2,14 @@
 
 package com.lambdaworks.redis.protocol;
 
-import com.lambdaworks.redis.RedisAsyncConnection;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.channel.group.ChannelGroup;
 import org.jboss.netty.util.*;
 
 import java.net.SocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -78,9 +79,11 @@ public class ConnectionWatchdog extends SimpleChannelUpstreamHandler implements 
     @Override
     public void run(Timeout timeout) throws Exception {
         ChannelPipeline old = channel.getPipeline();
-        CommandHandler<?, ?> handler = old.get(CommandHandler.class);
-        RedisAsyncConnection<?, ?> connection = old.get(RedisAsyncConnection.class);
-        ChannelPipeline pipeline = Channels.pipeline(this, handler, connection);
+        List<ChannelHandler> handlers = new ArrayList<ChannelHandler>();
+        for (String name : old.getNames()) {
+            handlers.add(old.get(name));
+        }
+        ChannelPipeline pipeline = Channels.pipeline(handlers.toArray(new ChannelHandler[handlers.size()]));
 
         Channel c = bootstrap.getFactory().newChannel(pipeline);
         c.getConfig().setOptions(bootstrap.getOptions());

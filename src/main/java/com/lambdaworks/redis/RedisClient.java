@@ -131,12 +131,16 @@ public class RedisClient {
      * @return A new connection.
      */
     public <K, V> RedisAsyncConnection<K, V> connectAsync(RedisCodec<K, V> codec) {
+        return connectAsync(codec, null);
+    }
+
+    public <K, V> RedisAsyncConnection<K, V> connectAsync(RedisCodec<K, V> codec, ChannelHandler callback) {
         BlockingQueue<Command<K, V, ?>> queue = new LinkedBlockingQueue<Command<K, V, ?>>();
 
         CommandHandler<K, V> handler = new CommandHandler<K, V>(queue);
         RedisAsyncConnection<K, V> connection = new RedisAsyncConnection<K, V>(queue, codec, timeout, unit);
 
-        return connect(handler, connection);
+        return connect(handler, connection, callback);
     }
 
     /**
@@ -148,18 +152,27 @@ public class RedisClient {
      * @return A new pub/sub connection.
      */
     public <K, V> RedisPubSubConnection<K, V> connectPubSub(RedisCodec<K, V> codec) {
+        return connectPubSub(codec,  null);
+    }
+
+    public <K, V> RedisPubSubConnection<K, V> connectPubSub(RedisCodec<K, V> codec, ChannelHandler callback) {
         BlockingQueue<Command<K, V, ?>> queue = new LinkedBlockingQueue<Command<K, V, ?>>();
 
         PubSubCommandHandler<K, V> handler = new PubSubCommandHandler<K, V>(queue, codec);
         RedisPubSubConnection<K, V> connection = new RedisPubSubConnection<K, V>(queue, codec, timeout, unit);
 
-        return connect(handler, connection);
+        return connect(handler, connection, callback);
     }
 
-    private <K, V, T extends RedisAsyncConnection<K, V>> T connect(CommandHandler<K, V> handler, T connection) {
+    private <K, V, T extends RedisAsyncConnection<K, V>> T connect(CommandHandler<K, V> handler, T connection, ChannelHandler callback) {
         try {
             ConnectionWatchdog watchdog = new ConnectionWatchdog(bootstrap, channels, timer);
-            ChannelPipeline pipeline = Channels.pipeline(watchdog, handler, connection);
+            ChannelPipeline pipeline;
+            if (callback != null) {
+                pipeline = Channels.pipeline(watchdog, handler, connection, callback);
+            } else {
+                pipeline = Channels.pipeline(watchdog, handler, connection);
+            }
             Channel channel = bootstrap.getFactory().newChannel(pipeline);
 
             ChannelFuture future = channel.connect((SocketAddress) bootstrap.getOption("remoteAddress"));

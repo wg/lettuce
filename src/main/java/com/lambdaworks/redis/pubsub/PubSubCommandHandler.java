@@ -36,11 +36,20 @@ public class PubSubCommandHandler<K, V> extends CommandHandler<K, V> {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ChannelBuffer buffer) throws InterruptedException {
-        while (!queue.isEmpty()) {
-            CommandOutput<K, V, ?> output = queue.peek().getOutput();
-            if (!rsm.decode(buffer, output)) return;
-            queue.take().complete();
-            if (output instanceof PubSubOutput) Channels.fireMessageReceived(ctx, output);
+        /**
+         * Only process from the queue if we aren't in the middle of constructing output. If we do it will lead to
+         * an Exception in {@link com.lambdaworks.redis.pubsub.PubSubOutput#set(java.nio.ByteBuffer)} when it attempts
+         * to convert the next sequence of bytes into a valid {@link com.lambdaworks.redis.pubsub.PubSubOutput.Type}.
+         */
+        if (output.type() == null) {
+            while (!queue.isEmpty()) {
+                CommandOutput<K, V, ?> output = queue.peek().getOutput();
+                if (!rsm.decode(buffer, output)) {
+                    return;
+                }
+                queue.take().complete();
+                if (output instanceof PubSubOutput) Channels.fireMessageReceived(ctx, output);
+            }
         }
 
         while (rsm.decode(buffer, output)) {
