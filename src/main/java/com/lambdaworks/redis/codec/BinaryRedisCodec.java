@@ -30,21 +30,11 @@ public class BinaryRedisCodec extends RedisCodec<byte[], byte[]> {
 
     @Override
     public byte[] encodeValue(byte[]  value) {
-    	return encode(value);
+        return encode(value);
     }
     
     private byte[] encode(byte[] value) {
-    	   try {
-               if(value instanceof byte[]){
-               	return (byte[])value;
-               }
-               else {
-               	throw new IOException("byte[] value was expected");
-               }
-           } catch (IOException e) {
-           	e.printStackTrace();
-               return null;
-           }
+        return (byte[]) value;
     }
 
     private byte[] decode(ByteBuffer bytes) {
