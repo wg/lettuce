@@ -6,7 +6,7 @@ import com.lambdaworks.redis.RedisAsyncConnection;
 import com.lambdaworks.redis.codec.RedisCodec;
 import com.lambdaworks.redis.protocol.Command;
 import com.lambdaworks.redis.protocol.CommandArgs;
-import org.jboss.netty.channel.*;
+import io.netty.channel.ChannelHandlerContext;
 
 import java.lang.reflect.Array;
 import java.util.*;
@@ -83,8 +83,8 @@ public class RedisPubSubConnection<K, V> extends RedisAsyncConnection<K, V> {
     }
 
     @Override
-    public synchronized void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-        super.channelConnected(ctx, e);
+    public synchronized void channelActive(ChannelHandlerContext ctx) throws Exception {
+        super.channelActive(ctx);
 
         if (channels.size() > 0) {
             subscribe(toArray(channels));
@@ -99,8 +99,8 @@ public class RedisPubSubConnection<K, V> extends RedisAsyncConnection<K, V> {
 
     @Override
     @SuppressWarnings("unchecked")
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-        PubSubOutput<K, V> output = (PubSubOutput<K, V>) e.getMessage();
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        PubSubOutput<K, V> output = (PubSubOutput<K, V>) msg;
         for (RedisPubSubListener<K, V> listener : listeners) {
             switch (output.type()) {
                 case message:

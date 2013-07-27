@@ -2,9 +2,8 @@
 
 package com.lambdaworks.redis.protocol;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.*;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.*;
 
 import java.util.concurrent.BlockingQueue;
 
@@ -14,9 +13,10 @@ import java.util.concurrent.BlockingQueue;
  *
  * @author Will Glozer
  */
-public class CommandHandler<K, V> extends SimpleChannelHandler {
+@ChannelHandler.Sharable
+public class CommandHandler<K, V> extends ChannelDuplexHandler {
     protected BlockingQueue<Command<K, V, ?>> queue;
-    protected ChannelBuffer buffer;
+    protected ByteBuf buffer;
     protected RedisStateMachine<K, V> rsm;
 
     /**
@@ -29,32 +29,41 @@ public class CommandHandler<K, V> extends SimpleChannelHandler {
     }
 
     @Override
-    public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-        buffer = ChannelBuffers.dynamicBuffer(ctx.getChannel().getConfig().getBufferFactory());
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        buffer = ctx.alloc().heapBuffer();
         rsm = new RedisStateMachine<K, V>();
     }
 
     @Override
-    public void writeRequested(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-        Command<?, ?, ?> cmd = (Command<?, ?, ?>) e.getMessage();
-        Channel channel = ctx.getChannel();
-        ChannelBuffer buf = ChannelBuffers.dynamicBuffer(channel.getConfig().getBufferFactory());
-        cmd.encode(buf);
-        Channels.write(ctx, e.getFuture(), buf);
+    public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
+        buffer.release();
     }
 
     @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-        ChannelBuffer input = (ChannelBuffer) e.getMessage();
-        if (!input.readable()) return;
-
-        buffer.discardReadBytes();
-        buffer.writeBytes(input);
-
-        decode(ctx, buffer);
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        ByteBuf input = (ByteBuf) msg;
+        try {
+            if (!input.isReadable()) return;
+    
+            buffer.discardReadBytes();
+            buffer.writeBytes(input);
+    
+            decode(ctx, buffer);
+        } finally {
+            input.release();
+        }
     }
 
-    protected void decode(ChannelHandlerContext ctx, ChannelBuffer buffer) throws InterruptedException {
+    @Override
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        Command<?, ?, ?> cmd = (Command<?, ?, ?>) msg;
+        Channel channel = ctx.channel();
+        ByteBuf buf = ctx.alloc().heapBuffer();
+        cmd.encode(buf);
+        ctx.write(buf, promise);
+    }
+
+    protected void decode(ChannelHandlerContext ctx, ByteBuf buffer) throws InterruptedException {
         while(!queue.isEmpty() && rsm.decode(buffer, queue.peek().getOutput())) {
             Command<K, V, ?> cmd = queue.take();
             cmd.complete();

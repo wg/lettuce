@@ -6,7 +6,10 @@ import com.lambdaworks.codec.Base16;
 import com.lambdaworks.redis.codec.RedisCodec;
 import com.lambdaworks.redis.output.*;
 import com.lambdaworks.redis.protocol.*;
-import org.jboss.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -27,7 +30,8 @@ import static com.lambdaworks.redis.protocol.CommandType.*;
  *
  * @author Will Glozer
  */
-public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
+@ChannelHandler.Sharable
+public class RedisAsyncConnection<K, V> extends ChannelInboundHandlerAdapter {
     protected BlockingQueue<Command<K, V, ?>> queue;
     protected RedisCodec<K, V> codec;
     protected Channel channel;
@@ -973,7 +977,7 @@ public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
      */
     public synchronized void close() {
         if (!closed && channel != null) {
-            ConnectionWatchdog watchdog = channel.getPipeline().get(ConnectionWatchdog.class);
+            ConnectionWatchdog watchdog = channel.pipeline().get(ConnectionWatchdog.class);
             watchdog.setReconnect(false);
             closed = true;
             channel.close();
@@ -991,8 +995,8 @@ public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
     }
 
     @Override
-    public synchronized void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-        channel = ctx.getChannel();
+    public synchronized void channelActive(ChannelHandlerContext ctx) throws Exception {
+        channel = ctx.channel();
 
         List<Command<K, V, ?>> tmp = new ArrayList<Command<K, V, ?>>(queue.size() + 2);
 
@@ -1012,7 +1016,7 @@ public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
         for (Command<K, V, ?> cmd : tmp) {
             if (!cmd.isCancelled()) {
                 queue.add(cmd);
-                channel.write(cmd);
+                channel.writeAndFlush(cmd);
             }
         }
 
@@ -1020,10 +1024,12 @@ public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
     }
 
     @Override
-    public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+    public synchronized void channelInactive(ChannelHandlerContext ctx) throws Exception {
         if (closed) {
             for (Command<K, V, ?> cmd : queue) {
-                cmd.getOutput().setError("Connection closed");
+                if (cmd.getOutput() != null) {
+                    cmd.getOutput().setError("Connection closed");
+                }
                 cmd.complete();
             }
             queue.clear();
@@ -1062,7 +1068,7 @@ public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
             queue.put(cmd);
 
             if (channel != null) {
-                channel.write(cmd);
+                channel.writeAndFlush(cmd);
             }
         } catch (NullPointerException e) {
             throw new RedisException("Connection is closed");

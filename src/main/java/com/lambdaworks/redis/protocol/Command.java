@@ -3,7 +3,7 @@
 package com.lambdaworks.redis.protocol;
 
 import com.lambdaworks.redis.RedisCommandInterruptedException;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 
 import java.util.concurrent.*;
 
@@ -155,7 +155,7 @@ public class Command<K, V, T> implements Future<T> {
      *
      * @param buf Buffer to write to.
      */
-    void encode(ChannelBuffer buf) {
+    void encode(ByteBuf buf) {
         buf.writeByte('*');
         writeInt(buf, 1 + (args != null ? args.count() : 0));
         buf.writeBytes(CRLF);
@@ -175,7 +175,7 @@ public class Command<K, V, T> implements Future<T> {
      * @param buf   Buffer to write to.
      * @param value Value to write.
      */
-    protected static void writeInt(ChannelBuffer buf, int value) {
+    protected static void writeInt(ByteBuf buf, int value) {
         if (value < 10) {
             buf.writeByte('0' + value);
             return;

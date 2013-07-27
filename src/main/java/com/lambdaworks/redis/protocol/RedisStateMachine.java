@@ -3,7 +3,7 @@
 package com.lambdaworks.redis.protocol;
 
 import com.lambdaworks.redis.RedisException;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
@@ -44,12 +44,16 @@ public class RedisStateMachine<K, V> {
      *
      * @return true if a complete response was read.
      */
-    public boolean decode(ChannelBuffer buffer, CommandOutput<K, V, ?> output) {
+    public boolean decode(ByteBuf buffer, CommandOutput<K, V, ?> output) {
         int length, end;
         ByteBuffer bytes;
 
         if (stack.isEmpty()) {
             stack.add(new State());
+        }
+
+        if (output == null) {
+            return stack.isEmpty();
         }
 
         loop:
@@ -58,7 +62,7 @@ public class RedisStateMachine<K, V> {
             State state = stack.peek();
 
             if (state.type == null) {
-                if (!buffer.readable()) break;
+                if (!buffer.isReadable()) break;
                 state.type = readReplyType(buffer);
                 buffer.markReaderIndex();
             }
@@ -116,13 +120,13 @@ public class RedisStateMachine<K, V> {
         return stack.isEmpty();
     }
 
-    private int findLineEnd(ChannelBuffer buffer) {
+    private int findLineEnd(ByteBuf buffer) {
         int start = buffer.readerIndex();
         int index = buffer.indexOf(start, buffer.writerIndex(), (byte) '\n');
         return (index > 0 && buffer.getByte(index - 1) == '\r') ? index : -1;
     }
 
-    private State.Type readReplyType(ChannelBuffer buffer) {
+    private State.Type readReplyType(ByteBuf buffer) {
         switch (buffer.readByte()) {
             case '+': return SINGLE;
             case '-': return ERROR;
@@ -133,7 +137,7 @@ public class RedisStateMachine<K, V> {
         }
     }
 
-    private long readLong(ChannelBuffer buffer, int start, int end) {
+    private long readLong(ByteBuf buffer, int start, int end) {
         long value = 0;
 
         boolean negative = buffer.getByte(start) == '-';
@@ -148,21 +152,21 @@ public class RedisStateMachine<K, V> {
         return value;
     }
 
-    private ByteBuffer readLine(ChannelBuffer buffer) {
+    private ByteBuffer readLine(ByteBuf buffer) {
         ByteBuffer bytes = null;
         int end = findLineEnd(buffer);
         if (end > -1) {
             int start = buffer.readerIndex();
-            bytes = buffer.toByteBuffer(start, end - start - 1);
+            bytes = buffer.nioBuffer(start, end - start - 1);
             buffer.readerIndex(end + 1);
         }
         return bytes;
     }
 
-    private ByteBuffer readBytes(ChannelBuffer buffer, int count) {
+    private ByteBuffer readBytes(ByteBuf buffer, int count) {
         ByteBuffer bytes = null;
         if (buffer.readableBytes() >= count) {
-            bytes = buffer.toByteBuffer(buffer.readerIndex(), count - 2);
+            bytes = buffer.nioBuffer(buffer.readerIndex(), count - 2);
             buffer.readerIndex(buffer.readerIndex() + count);
         }
         return bytes;
