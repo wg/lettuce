@@ -4,8 +4,8 @@ package com.lambdaworks.redis.pubsub;
 
 import com.lambdaworks.redis.codec.RedisCodec;
 import com.lambdaworks.redis.protocol.*;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.*;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.*;
 
 import java.util.concurrent.BlockingQueue;
 
@@ -35,16 +35,16 @@ public class PubSubCommandHandler<K, V> extends CommandHandler<K, V> {
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ChannelBuffer buffer) throws InterruptedException {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf buffer) throws InterruptedException {
         while (output.type() == null && !queue.isEmpty()) {
             CommandOutput<K, V, ?> output = queue.peek().getOutput();
             if (!rsm.decode(buffer, output)) return;
             queue.take().complete();
-            if (output instanceof PubSubOutput) Channels.fireMessageReceived(ctx, output);
+            if (output instanceof PubSubOutput) ctx.fireChannelRead(output);
         }
 
         while (rsm.decode(buffer, output)) {
-            Channels.fireMessageReceived(ctx, output);
+            ctx.fireChannelRead(output);
             output = new PubSubOutput<K, V>(codec);
         }
     }
