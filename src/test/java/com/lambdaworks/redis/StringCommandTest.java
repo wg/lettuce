@@ -8,6 +8,7 @@ import org.junit.rules.ExpectedException;
 
 import java.util.*;
 
+import static com.lambdaworks.redis.SetArgs.Builder.*;
 import static org.junit.Assert.*;
 
 public class StringCommandTest extends AbstractCommandTest {
@@ -84,6 +85,43 @@ public class StringCommandTest extends AbstractCommandTest {
         assertNull(redis.get(key));
         assertEquals("OK", redis.set(key, value));
         assertEquals(value, redis.get(key));
+
+        assertEquals("OK", redis.set(key, value, ex(10)));
+        assertEquals(value, redis.get(key));
+        assertTrue(redis.ttl(key) >= 9);
+
+        assertEquals("OK", redis.set(key, value, ex(10).px(20000)));
+        assertEquals(value, redis.get(key));
+        assertTrue(redis.ttl(key) >= 19);
+
+        assertEquals("OK", redis.set(key, value, px(10000)));
+        assertEquals(value, redis.get(key));
+        assertTrue(redis.ttl(key) >= 9);
+
+        assertNull(redis.set(key, value, nx()));
+        assertEquals("OK", redis.set(key, value, xx()));
+        assertEquals(value, redis.get(key));
+
+        redis.del(key);
+
+        assertEquals("OK", redis.set(key, value, nx()));
+        assertEquals(value, redis.get(key));
+
+        redis.del(key);
+
+        assertEquals("OK", redis.set(key, value, ex(10).px(20000).nx()));
+        assertEquals(value, redis.get(key));
+        assertTrue(redis.ttl(key) >= 19);
+    }
+
+    @Test(expected = RedisException.class)
+    public void setNegativeEX() throws Exception {
+        redis.set(key, value, ex(-10));
+    }
+
+    @Test(expected = RedisException.class)
+    public void setNegativePX() throws Exception {
+        redis.set(key, value, px(-1000));
     }
 
     @Test

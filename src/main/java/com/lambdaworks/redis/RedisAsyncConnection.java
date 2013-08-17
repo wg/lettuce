@@ -589,6 +589,12 @@ public class RedisAsyncConnection<K, V> extends SimpleChannelUpstreamHandler {
         return dispatch(SET, new StatusOutput<K, V>(codec), key, value);
     }
 
+    public Future<V> set(K key, V value, SetArgs setArgs) {
+        CommandArgs<K, V> args = new CommandArgs<K, V>(codec).addKey(key).addValue(value);
+        setArgs.build(args);
+        return dispatch(SET, new ValueOutput<K, V>(codec), args);
+    }
+
     public Future<Long> setbit(K key, long offset, int value) {
         CommandArgs<K, V> args = new CommandArgs<K, V>(codec).addKey(key).add(offset).add(value);
         return dispatch(SETBIT, new IntegerOutput<K, V>(codec), args);
