@@ -519,6 +519,10 @@ public class RedisConnection<K, V> {
         return await(c.set(key, value));
     }
 
+    public V set(K key, V value, SetArgs setArgs) {
+        return await(c.set(key, value, setArgs));
+    }
+
     public Long setbit(K key, long offset, int value) {
         return await(c.setbit(key, offset, value));
     }
