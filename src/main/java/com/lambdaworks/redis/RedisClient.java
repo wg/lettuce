@@ -32,6 +32,7 @@ public class RedisClient {
     private ChannelGroup channels;
     private long timeout;
     private TimeUnit unit;
+    private IRedisConnectionStateListener connectionStateListener = null;
 
     /**
      * Create a new client that connects to the supplied host on the default port.
@@ -40,6 +41,16 @@ public class RedisClient {
      */
     public RedisClient(String host) {
         this(host, 6379);
+    }
+    
+    /**
+     * Create a new client that connects to the supplied host on the default port.
+     *
+     * @param host    Server hostname.
+     */
+    public RedisClient(String host, IRedisConnectionStateListener listener) {
+        this(host, 6379);
+        this.connectionStateListener = listener;
     }
 
     /**
@@ -64,6 +75,20 @@ public class RedisClient {
 
         channels = new DefaultChannelGroup();
         timer    = new HashedWheelTimer();
+    }
+    
+    /**
+     * Create a new client that connects to the supplied host and port. Connection
+     * attempts and non-blocking commands will {@link #setDefaultTimeout timeout}
+     * after 60 seconds.
+     *
+     * @param host    Server hostname.
+     * @param port    Server port.
+     * @param listener Connection state listener
+     */
+    public RedisClient(String host, int port, IRedisConnectionStateListener listener) {
+        this(host, port);
+        this.connectionStateListener = listener;
     }
 
     /**
@@ -158,7 +183,7 @@ public class RedisClient {
 
     private <K, V, T extends RedisAsyncConnection<K, V>> T connect(CommandHandler<K, V> handler, T connection) {
         try {
-            ConnectionWatchdog watchdog = new ConnectionWatchdog(bootstrap, channels, timer);
+            ConnectionWatchdog<K, V, T> watchdog = new ConnectionWatchdog<K, V, T>(bootstrap, channels, timer, this, connection);
             ChannelPipeline pipeline = Channels.pipeline(watchdog, handler, connection);
             Channel channel = bootstrap.getFactory().newChannel(pipeline);
 
@@ -176,6 +201,24 @@ public class RedisClient {
             throw new RedisException("Unable to connect", e);
         }
     }
+    
+    /**
+     * Gets client's connection state listener.
+     * 
+     * @return Connection state listener associated to this client.
+     */
+    public IRedisConnectionStateListener getConnectionStateListener() {
+        return connectionStateListener;
+    }
+    
+    /**
+     * Sets client's connection state listener.
+     * 
+     * @param listener Connection state listener associated to this client.
+     */
+    public void setConnectionStateListener(IRedisConnectionStateListener listener) {
+        connectionStateListener = listener;
+    }    
 
     /**
      * Shutdown this client and close all open connections. The client should be
